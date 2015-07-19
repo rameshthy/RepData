@@ -1,0 +1,245 @@
+---
+output: html_document
+---
+#Reproducible Research: Peer Assessment 1
+
+##Introduction
+
+The goal of this assignment to practice skills needed for reproducible research. Specifically this assignment use R markdown to write a report that answers the questions detailed in the sections below. In the process, the single R markdown document will be processed by knitr and be transformed into an HTML file.
+
+Start this assignment with fork/clone the GitHub repository created for this assignment. When finish, submit this assignment by pushing your completed files into your forked repository on GitHub. The assignment submission will consist of the URL to your GitHub repository and the SHA-1 commit ID for your repository state.
+
+##Data
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day. The data for this assignment can be downloaded from the course web site: Dataset: Activity monitoring data [52K] The variables included in this dataset are:
+
+steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+date: The date on which the measurement was taken in YYYY-MM-DD format
+interval: Identifier for the 5-minute interval in which measurement was taken The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
+
+###Loading and preprocessing data
+
+
+```{r}
+## -------Get the data from the source and unzip the package--------
+# if(!file.exists("./Data")){dir.create("./Data")}
+# fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+# file<-"./Data/activity.zip"
+# download.file(fileUrl,file,method="curl")
+# unzip(zipfile=file,exdir="./Data")
+
+library(lattice) 
+library(knitr)
+library(ggplot2)
+library(dplyr)
+opts_chunk$set(echo = TRUE, results = 'hold', tidy = TRUE)
+options(scipen=999)
+
+```
+
+##Read data (read.csv()) 
+
+```{r}
+
+activity_raw <- read.csv("./Data/activity.csv", stringsAsFactors=FALSE)
+```
+
+##Process data
+
+```{r}
+# Actual date format
+activity_raw$date <- as.POSIXct(activity_raw$date, format="%Y-%m-%d")
+
+# Weekdays from the date attribute
+activity_raw <- data.frame(date=activity_raw$date, 
+                           weekday=tolower(weekdays(activity_raw$date)), 
+                           steps=activity_raw$steps, 
+                           interval=activity_raw$interval)
+
+# Compute the day type (weekend or weekday)
+activity_raw <- cbind(activity_raw, 
+                      daytype=ifelse(activity_raw$weekday == "saturday" | 
+                                     activity_raw$weekday == "sunday", "weekend", 
+                                     "weekday"))
+
+# Create the final data.frame
+activity <- data.frame(date=activity_raw$date, 
+                       weekday=activity_raw$weekday, 
+                       daytype=activity_raw$daytype, 
+                       interval=activity_raw$interval,
+                       steps=activity_raw$steps)
+
+# House keeping - clear the workspace
+rm(activity_raw)
+
+
+```
+
+### Generate the Histogram
+
+```{r}
+sum_data <- aggregate(activity$steps, by=list(activity$date), FUN=sum, na.rm=TRUE)
+names(sum_data) <- c("date", "total")
+
+hist(sum_data$total, 
+     breaks=seq(from=0, to=25000, by=2500),
+     col="blue", 
+     xlab="Total number of steps", 
+     ylim=c(0, 20), 
+     main="Histogram of the total number of steps taken each day\n(NA removed)")
+
+
+```
+
+
+### 2. Calculate and report the mean and median total number of steps taken per day
+```{r}
+mean<-mean(sum_data$total)
+median<-median(sum_data$total)
+```
+
+These formulas gives a mean and median of `r mean` and `r median` respectively.
+
+
+##What is the average daily activity pattern?
+
+### 1. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+
+```{r}
+
+# Calculate the means of steps accross all days for each interval
+mean_data <- aggregate(activity$steps, 
+                       by=list(activity$interval), 
+                       FUN=mean, 
+                       na.rm=TRUE)
+
+# Rename the attributes
+names(mean_data) <- c("interval", "mean")
+
+# Plot the time series
+plot(mean_data$interval, 
+     mean_data$mean, 
+     type="l", 
+     col="blue", 
+     lwd=2, 
+     xlab="Interval [minutes]", 
+     ylab="Average number of steps", 
+     main="Time-series of the average number of steps per intervals\n(NA removed)")
+
+```
+
+### 2.Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r}
+
+# Find the position of the max mean
+max_pos <- which(mean_data$mean == max(mean_data$mean))
+
+# Lokup the value of interval at max position
+max_interval <- mean_data[max_pos, 1]
+
+```
+
+The 5-minute interval that contains the maximum of steps, on average across all days, is `r max_interval`
+
+#Inputing the missing values
+####1.  Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NA’s)
+
+```{r}
+
+# TRUE boolean value is equivalent to 1 and a FALSE to 0.
+NA_count <- sum(is.na(activity$steps))
+
+```
+
+The number of NA’s is `r NA_count`
+
+
+####2.  Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+
+```{r}
+# Find the NA positions
+na_pos <- which(is.na(activity$steps))
+
+# Create a vector of means
+mean_vec <- rep(mean(activity$steps, na.rm=TRUE), times=length(na_pos))
+
+
+
+```
+
+####3.  Replace each NA value by the mean of the steps attribute.
+
+```{r}
+
+# Replace the NAs by the means
+activity[na_pos, "steps"] <- mean_vec
+
+
+```
+
+####4.Make a histogram of the total number of steps taken each day and calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+```{r}
+
+# calculate the total number of steps each day with NA values removed
+sum_data <- aggregate(activity$steps, by=list(activity$date), FUN=sum)
+
+# Rename the attributes
+names(sum_data) <- c("date", "total")
+
+# Calculate the histogram of the total number of steps each day
+hist(sum_data$total, 
+     breaks=seq(from=0, to=25000, by=2500),
+     col="blue", 
+     xlab="Total number of steps", 
+     ylim=c(0, 30), 
+     main="Histogram of the total number of steps taken each day\n(NA replaced by mean value)")
+
+```
+
+Mean and median 
+```{r}
+mean<-mean(sum_data$total)
+median<-median(sum_data$total)
+```
+
+These formulas gives a mean and median of `r mean` and `r median` respectively.
+
+
+#Are there differences in activity patterns between weekdays and weekends?
+
+#### 1. Create a new factor variable in the dataset with two levels - “weekdays” and “weekend” indicating whether a given date is a weekday or weekend day.
+
+```{r}
+
+head(activity)
+```
+
+
+#### 2.  Make a panel plot containing a time series plot (i.e. type = "l") of the 5- minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+```{r}
+
+# Calculate the average number of steps taken, averaged across all daytype variable
+mean_data <- aggregate(activity$steps, 
+                       by=list(activity$daytype, 
+                               activity$weekday, activity$interval), mean)
+
+# Rename the attributes
+names(mean_data) <- c("daytype", "weekday", "interval", "mean")
+
+
+#Plot time series
+
+xyplot(mean ~ interval | daytype, mean_data, 
+       type="l", 
+       lwd=1, 
+       xlab="Interval", 
+       ylab="Number of steps", 
+       layout=c(1,2))
+
+```
+
+    
